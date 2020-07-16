@@ -34,14 +34,22 @@ if CLIENT then
 		end
 		return false
 	end
+    
+    function TOOL:LeftClick( trace )
+        return true
+    end
 
+    function TOOL:RightClick( trace )
+        return true
+    end
+    
 	function TOOL:DrawHUD()
 		if not IsValid( drawtarget ) then return end
 		
 		local lpos, rpos, tpos
 		
 		for k, v in pairs( drawdata ) do
-			if v.ent and ( v.ent:IsValid() or v.ent:IsWorld() ) then				
+			if v.ent and ( v.ent:IsValid() or v.ent:IsWorld() ) then
 				lpos = drawtarget:LocalToWorld( v.loc )
 				
 				if v.ent:IsWorld() then
@@ -51,7 +59,6 @@ if CLIENT then
 				end
 				
 				tpos = ( lpos + rpos ) / 2
-
 				tpos = tpos:ToScreen()
 				tpos.y = tpos.y - v.y
 				
@@ -137,7 +144,7 @@ if CLIENT then
 		-- read data
 		drawtarget = net.ReadEntity()
 		constraintdata = net.ReadTable()
-		
+
 		local yoff = {}
 		
 		-- build table for drawhud function
@@ -188,38 +195,42 @@ end
 
 if SERVER then
 	util.AddNetworkString( "constraintinfo_update" )
-end
+	
+	local function getEntityConstraints( ent )
+		local originalTbl = constraint.GetTable( ent ) 
+        
+		for k, const in ipairs( originalTbl ) do
+			for field, val in pairs( const ) do
+				if field == "OnDieFunctions" then
+					originalTbl[k][field] = nil
+				end
+			end
+		end
+		
+		return originalTbl
+	end
+	
+	local function sendConstraintInfo( ply, ent, isDetailed )
+		if ent and ent:IsWorld() then ent = nil end
+		
+		local tbl = getEntityConstraints( ent )
+		
+        xpcall(function()
+            net.Start( "constraintinfo_update" )
+                net.WriteEntity( ent )
+                net.WriteTable( tbl )
+                net.WriteBit( isDetailed ) -- do not show detailed info
+            net.Send( ply )
+        end, function( err )
+            PrintTable( tbl ) MsgC(Color(255,0,0), err, "\n")
+        end)
+	end
+    
+    function TOOL:LeftClick( trace )
+        sendConstraintInfo( self:GetOwner(), trace.Entity, false )
+    end
 
-function TOOL:LeftClick( trace )
-	if CLIENT then return true end
-	
-	local target = trace.Entity
-	if target and target:IsWorld() then target = nil end
-	
-	-- local constraints = self:GetConstrainedEntities( target )
-	
-	net.Start( "constraintinfo_update" )
-		net.WriteEntity( target )
-		net.WriteTable( constraint.GetTable( target ) )
-		net.WriteBit( false ) -- do not show detailed info
-	net.Send( self:GetOwner() )
-	
-	return true
-end
-
-function TOOL:RightClick( trace )
-	if CLIENT then return true end
-	
-	local target = trace.Entity
-	if target and target:IsWorld() then target = nil end
-	
-	-- local constraints = self:GetConstrainedEntities( target )
-	
-	net.Start( "constraintinfo_update" )
-		net.WriteEntity( target )
-		net.WriteTable( constraint.GetTable( target ) )
-		net.WriteBit( true ) -- show detailed info
-	net.Send( self:GetOwner() )
-	
-	return true
+    function TOOL:RightClick( trace )
+        sendConstraintInfo( self:GetOwner(), trace.Entity, true )
+    end
 end
